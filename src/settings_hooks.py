@@ -17,9 +17,16 @@ EVENTS = ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "StopFailure
 POSIX_HOOK = {"type": "command", "command": COMMAND, "timeout": 5}
 
 
-def windows_hook(python_exe, hook_script):
+# Runs ~/.claude-light/src/hook.py only if it exists. A missing script must exit 0: Python's own
+# "can't open file" exits 2, which Claude Code reads as BLOCK (every prompt, every turn end).
+GUARD = ("import os,runpy,sys; "
+         "p=os.path.join(os.path.expanduser('~'),*'.claude-light/src/hook.py'.split('/')); "
+         "sys.argv=[p]; os.path.exists(p) and runpy.run_path(p, run_name='__main__')")
+
+
+def windows_hook(python_exe):
     """Exec form (no shell): Claude starts pythonw itself, so the hook's parent IS claude."""
-    return {"type": "command", "command": python_exe, "args": [hook_script], "timeout": 5}
+    return {"type": "command", "command": python_exe, "args": ["-c", GUARD], "timeout": 5}
 
 
 def _is_ours(group):
@@ -66,7 +73,7 @@ def update_file(path, change):
     real = os.path.realpath(path)
     old_text = None
     if os.path.exists(real):
-        with open(real) as f:
+        with open(real, encoding="utf-8") as f:
             old_text = f.read()
         try:
             settings = json.loads(old_text) if old_text.strip() else {}
@@ -81,30 +88,35 @@ def update_file(path, change):
     if new_text == old_text:
         return False
     if old_text is not None:
-        with open(real + ".claude-light-backup", "w") as f:
+        with open(real + ".claude-light-backup", "w", encoding="utf-8") as f:
             f.write(old_text)
     tmp = "%s.claude-light.tmp" % real
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write(new_text)
     os.replace(tmp, real)
     return True
 
 
 def main(argv):
-    """add [settings.json] | add-exec <python> <hook.py> [settings.json] | remove [settings.json]"""
+    """add [settings.json] | add-exec <pythonw.exe> [settings.json] | remove [settings.json]"""
     cmd = argv[0] if argv else ""
-    if cmd == "add-exec" and len(argv) >= 3:
-        hook = windows_hook(argv[1], argv[2])
-        rest = argv[3:]
+    if cmd == "add-exec" and len(argv) >= 2:
+        hook = windows_hook(argv[1])
+        rest = argv[2:]
         change = lambda s: add_hooks(s, hook=hook)  # noqa: E731
     elif cmd in ("add", "remove"):
         rest = argv[1:]
         change = add_hooks if cmd == "add" else remove_hooks
     else:
         sys.stderr.write("usage: settings_hooks.py add|remove [settings.json] | "
-                         "add-exec <python> <hook.py> [settings.json]\n")
+                         "add-exec <pythonw.exe> [settings.json]\n")
         return 2
     path = os.path.expanduser(rest[0] if rest else "~/.claude/settings.json")
+    if cmd == "add-exec" and os.path.islink(path):
+        sys.stderr.write("claude-light: %s is a link to a shared settings file; Windows-only hooks there would "
+                         "break the other machines. Give this machine its own settings.json, or add the "
+                         "hooks by hand. Nothing was changed.\n" % path)
+        return 1
     try:
         changed = update_file(path, change)
     except ValueError as e:

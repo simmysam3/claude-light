@@ -42,7 +42,7 @@ Write-Host '3/6 the bong'
 & $python (Join-Path $R 'src\bong.py') (Join-Path $R 'bong.wav')
 
 Write-Host '4/6 Claude Code hooks'
-& $python (Join-Path $R 'src\settings_hooks.py') add-exec $pythonw (Join-Path $R 'src\hook.py') $Settings
+& $python (Join-Path $R 'src\settings_hooks.py') add-exec $pythonw $Settings
 if ($LASTEXITCODE -ne 0) { throw 'could not add the hooks (see the message above); fix settings.json and run again' }
 
 Write-Host '5/6 the claude-light command'

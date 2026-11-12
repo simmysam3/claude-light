@@ -255,6 +255,7 @@ function Item([string]$title, $tag, [bool]$checked) {
 }
 
 $menu.Add_Opening({
+    param($menuSource, $opening)
     $menu.Items.Clear()
     $d = $script:current
     $cfg = $null; if ($d) { $cfg = $d.config }
@@ -293,7 +294,9 @@ $menu.Add_Opening({
     $help = New-Object System.Windows.Forms.ToolStripMenuItem 'Help...'
     $help.Add_Click({ try { Start-Process (Join-Path $Root 'README.md') } catch { Log "help: $_" } })
     [void]$menu.Items.Add($help)
+    $opening.Cancel = $false      # WinForms pre-cancels opening a menu that had no items
 })
+[void]$menu.Items.Add('claude-light')   # never empty, belt and braces for the line above
 
 # ---- run ----------------------------------------------------------------------------------------
 $timer = New-Object Windows.Threading.DispatcherTimer

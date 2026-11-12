@@ -76,5 +76,15 @@ class TestMenuCommand(unittest.TestCase):
             self.assertFalse(json.load(f)["sound"])
 
 
+class TestMenuTrimmedChoice(unittest.TestCase):
+    def test_a_picker_that_trims_spaces_still_hits_its_line(self):
+        import json
+        import tempfile
+        root = tempfile.mkdtemp()
+        self.assertEqual(lightctl.run_menu(root, lambda labels: "Size: 80%"), 0)     # was "   Size: 80%"
+        with open(os.path.join(root, "config.json")) as f:
+            self.assertEqual(json.load(f)["size"], 8)
+
+
 if __name__ == "__main__":
     unittest.main()

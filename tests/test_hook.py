@@ -50,5 +50,13 @@ class TestParentWithoutArgument(unittest.TestCase):
             self.assertEqual(json.load(f)["pid"], 4242)
 
 
+class TestStdinIsUtf8(unittest.TestCase):
+    def test_reads_utf8_even_when_the_console_says_cp1252(self):
+        import io
+        raw = '{"last_assistant_message": "Á ✓"}'.encode("utf-8")       # C3 81: 0x81 is not cp1252
+        windows_stdin = io.TextIOWrapper(io.BytesIO(raw), encoding="cp1252")
+        self.assertEqual(json.loads(hook.read_stdin(windows_stdin))["last_assistant_message"], "Á ✓")
+
+
 if __name__ == "__main__":
     unittest.main()

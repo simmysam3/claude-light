@@ -82,7 +82,8 @@ def waybar(root, follow=False):
 def run_menu(root, choose):
     """Offer the settings as a list; apply the line chosen (choose returns None on cancel)."""
     entries = uihelp.menu_entries(_load_config(root))
-    picked = dict(entries).get(choose([label for label, _ in entries]) or "")
+    chosen = (choose([label for label, _ in entries]) or "").strip()
+    picked = {label.strip(): args for label, args in entries}.get(chosen)   # some pickers trim spaces
     return main(picked, root=root) if picked else 0
 
 

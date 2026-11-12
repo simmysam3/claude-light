@@ -29,6 +29,9 @@ Claude Code itself, not the terminal.
 
     bash install.sh
 
+> **Status:** macOS is in daily use. The Linux and Windows versions are new and have not yet been
+> run on real machines: expect rough edges, and please open an issue with what you see.
+
 **Linux**, Wayland compositors with layer-shell: Hyprland (Omarchy), Sway, KDE Plasma, river, ...
 (GNOME has no layer-shell: there the ball shows but cannot stay on top). Needs GTK 4 with
 layer-shell for Python; on Arch / Omarchy:
@@ -38,13 +41,19 @@ layer-shell for Python; on Arch / Omarchy:
 
 The installer prints a Waybar module to paste into `~/.config/waybar/config.jsonc`; click the dot for
 the settings menu (shown in walker, fuzzel, wofi or rofi, whichever you have). The watcher runs as
-the systemd user service `claude-light` (logs: `journalctl --user -u claude-light`).
+the systemd user service `claude-light` (logs: `journalctl --user -u claude-light`). It starts with
+`graphical-session.target`; if after a reboot `systemctl --user is-active claude-light` says
+inactive, your session does not reach that target: add `exec-once = systemctl --user start
+claude-light` to your Hyprland config.
 
 **Windows** (needs Python 3 from python.org or `winget install Python.Python.3.12`; no admin):
 
     powershell -NoProfile -ExecutionPolicy Bypass -File windows\install.ps1
 
-The tray icon holds every setting; it starts at sign-in from your Startup folder.
+The tray icon holds every setting; it starts at sign-in from your Startup folder. The Windows
+hooks run Python directly (no shell) and do nothing if `.claude-light` is missing. The installer
+refuses a `settings.json` that is a link to a shared file, since Windows-only hooks there would
+break the other machines.
 
 Every installer runs the tests first, copies everything to `~/.claude-light`, and adds nine
 hooks to `~/.claude/settings.json` (your other settings and hooks are left alone; a backup is

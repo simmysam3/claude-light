@@ -19,6 +19,10 @@ if (-not $KeepHooks) {
     $hooks = Join-Path $R 'src\settings_hooks.py'
     if (-not (Test-Path -LiteralPath $hooks)) { $hooks = Join-Path (Split-Path -Parent $PSScriptRoot) 'src\settings_hooks.py' }
     & $python $hooks remove $Settings
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "could not remove the hooks from $Settings; nothing else was deleted. Fix the file and run again, or use -KeepHooks."
+        exit 1
+    }
 }
 Remove-Item -LiteralPath $R -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host 'claude-light removed (a backup of your settings is next to it: settings.json.claude-light-backup)'

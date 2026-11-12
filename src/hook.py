@@ -61,9 +61,15 @@ def _save(path, data):
     fsutil.write_json(path, data)
 
 
+def read_stdin(stream):
+    """Claude sends UTF-8; Windows pipes default to cp1252, so read the bytes and decode them ourselves."""
+    raw = stream.buffer.read() if hasattr(stream, "buffer") else stream.read()
+    return raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+
+
 def main():
     try:
-        run(sys.argv, sys.stdin.read(), STATE_DIR, time.time(), procinfo.identify)
+        run(sys.argv, read_stdin(sys.stdin), STATE_DIR, time.time(), procinfo.identify)
     except Exception:  # never disturb Claude
         pass
     return 0
