@@ -1,0 +1,20 @@
+#!/bin/zsh
+# claude-light: on | off | sound on|off | message on|off | size 1-10 | delay <seconds|Nm>
+#               | status | preview [green|yellow|red] | restart
+# Settings go through src/lightctl.py (the one writer of config.json); the menu bar uses it too.
+R="$HOME/.claude-light"
+LABEL="local.claude-light"
+case "${1:-status}" in
+  preview)
+    color="${2:-yellow}"
+    [[ "$color" == (green|yellow|red) ]] || { echo "claude-light: preview green|yellow|red" >&2; exit 2; }
+    printf '{"color": "%s"}\n' "$color" > "$R/preview.json"
+    echo "claude-light: previewing $color for 6 s" ;;
+  restart)
+    launchctl kickstart -k "gui/$(id -u)/$LABEL" && echo "claude-light: restarted" ;;
+  status)
+    /usr/bin/python3 "$R/src/lightctl.py" status
+    if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then echo "watcher: running"; else echo "watcher: NOT running (run install.sh)"; fi ;;
+  *)
+    exec /usr/bin/python3 "$R/src/lightctl.py" "$@" ;;
+esac
