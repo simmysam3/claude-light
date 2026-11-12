@@ -217,5 +217,37 @@ class TestDisplayCarriesSettings(Base):
         self.assertEqual(d["config"], dict(lc.DEFAULT_CONFIG, size=3, sound=False))
 
 
+class TestEmptyLookupMeansGone(unittest.TestCase):
+    def test_empty_answer_is_dead_but_no_answer_is_unknown(self):
+        s = {"pid": 4242, "pid_start": "x"}
+        self.assertFalse(lightd.process_alive(s, {}))      # asked about 4242: nothing alive
+        self.assertTrue(lightd.process_alive(s, None))     # the lookup itself failed: never cry crash
+
+
+class TestBallCommand(unittest.TestCase):
+    def test_each_os_starts_its_own_ball(self):
+        self.assertEqual(lightd.ball_command("darwin", "/h/.claude-light", "/usr/bin/python3"),
+                         ["/h/.claude-light/bin/ball", "/h/.claude-light/display.json", "/h/.claude-light/bong.wav"])
+        self.assertEqual(lightd.ball_command("linux", "/h/.claude-light", "/usr/bin/python3"),
+                         ["/usr/bin/python3", "/h/.claude-light/linux/ball.py",
+                          "/h/.claude-light/display.json", "/h/.claude-light/bong.wav"])
+        win = lightd.ball_command("win32", r"C:\Users\x\.claude-light", r"C:\Py\pythonw.exe")
+        self.assertEqual(win[:6], ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-File"])
+        self.assertEqual(win[6:], [r"C:\Users\x\.claude-light\windows\ball.ps1",
+                                   r"C:\Users\x\.claude-light\display.json",
+                                   r"C:\Users\x\.claude-light\bong.wav", r"C:\Py\pythonw.exe"])
+
+
+class TestStatusLine(Base):
+    def test_display_carries_one_status_sentence(self):
+        self.put("webapp", "yellow", since=95.0)
+        self.assertEqual(self.w.tick(now=100.0)["status"], "A session is waiting (ball after the delay)")
+        self.assertEqual(self.w.tick(now=300.0)["status"], "A session is waiting: webapp")
+        self.put("webapp", "idle")
+        self.assertEqual(self.w.tick(now=301.0)["status"], "All quiet")
+        self.config(enabled=False)
+        self.assertEqual(self.w.tick(now=302.0)["status"], "claude-light is off")
+
+
 if __name__ == "__main__":
     unittest.main()

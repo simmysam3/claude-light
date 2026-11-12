@@ -186,3 +186,17 @@ def tail_text(text, limit=280):
     if 0 <= space < len(cut) - 1:
         cut = cut[space + 1:]
     return "…" + cut
+
+
+STATUS_NAME = {GREEN: "Question waiting", YELLOW: "A session is waiting", RED: "Error"}
+
+
+def status_line(display, enabled):
+    """One sentence for a tray tooltip or menu header."""
+    if not enabled:
+        return "claude-light is off"
+    if display.get("visible"):
+        return "%s: %s" % (STATUS_NAME.get(display.get("color"), "Alert"), display.get("detail", ""))
+    if display.get("tray") in STATUS_NAME:
+        return "%s (ball after the delay)" % STATUS_NAME[display["tray"]]
+    return "All quiet"

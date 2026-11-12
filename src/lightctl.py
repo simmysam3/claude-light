@@ -6,9 +6,12 @@
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fsutil  # noqa: E402
 import lightcore as lc  # noqa: E402
+import uihelp  # noqa: E402
 
 ROOT = os.path.expanduser("~/.claude-light")
 SWITCHES = {"sound": "sound", "message": "show_message"}
@@ -58,6 +61,50 @@ def describe(cfg):
     ])
 
 
+def waybar(root, follow=False):
+    """One Waybar JSON line from display.json; with follow, a new line whenever it changes."""
+    last = None
+    while True:
+        try:
+            with open(os.path.join(root, "display.json")) as f:
+                display = json.load(f)
+        except (OSError, ValueError):
+            display = None
+        line = json.dumps(uihelp.waybar_line(display), ensure_ascii=False)
+        if line != last:
+            print(line, flush=True)
+            last = line
+        if not follow:
+            return 0
+        time.sleep(0.5)
+
+
+def run_menu(root, choose):
+    """Offer the settings as a list; apply the line chosen (choose returns None on cancel)."""
+    entries = uihelp.menu_entries(_load_config(root))
+    picked = dict(entries).get(choose([label for label, _ in entries]) or "")
+    return main(picked, root=root) if picked else 0
+
+
+def dmenu_chooser(labels):
+    import shutil
+    import subprocess
+    command = uihelp.pick_dmenu(shutil.which)
+    if not command:
+        sys.stderr.write("claude-light: no picker found (walker, fuzzel, wofi or rofi)\n")
+        return None
+    done = subprocess.run(command, input="\n".join(labels) + "\n", capture_output=True, text=True)
+    return done.stdout.rstrip("\n") or None
+
+
+def _load_config(root):
+    try:
+        with open(os.path.join(root, "config.json")) as f:
+            return lc.normalize_config(json.load(f))
+    except (OSError, ValueError):
+        return lc.normalize_config(None)
+
+
 def main(argv, root=ROOT):
     path = os.path.join(root, "config.json")
     try:
@@ -68,15 +115,24 @@ def main(argv, root=ROOT):
     if not argv or argv[0] == "status":
         print(describe(cfg))
         return 0
+    if argv[0] == "waybar":
+        return waybar(root, follow="--follow" in argv)
+    if argv[0] == "menu":
+        return run_menu(root, dmenu_chooser)
+    if argv[0] == "preview":
+        color = argv[1] if len(argv) > 1 else "yellow"
+        if color not in ("green", "yellow", "red"):
+            sys.stderr.write("claude-light: preview green|yellow|red\n")
+            return 2
+        fsutil.write_json(os.path.join(root, "preview.json"), {"color": color})
+        print("claude-light: previewing %s for 6 s (needs the watcher running)" % color)
+        return 0
     try:
         cfg, reply = apply_command(cfg, argv)
     except ValueError as e:
         sys.stderr.write("claude-light: %s\n" % e)
         return 2
-    tmp = "%s.%d.tmp" % (path, os.getpid())
-    with open(tmp, "w") as f:
-        json.dump(cfg, f, indent=1)
-    os.replace(tmp, path)
+    fsutil.write_json(path, cfg)
     print(reply)
     return 0
 

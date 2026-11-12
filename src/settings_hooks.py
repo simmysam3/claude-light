@@ -14,17 +14,30 @@ EVENTS = ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "StopFailure
           "PreToolUse", "PostToolUse", "PostToolUseFailure"]
 
 
+POSIX_HOOK = {"type": "command", "command": COMMAND, "timeout": 5}
+
+
+def windows_hook(python_exe, hook_script):
+    """Exec form (no shell): Claude starts pythonw itself, so the hook's parent IS claude."""
+    return {"type": "command", "command": python_exe, "args": [hook_script], "timeout": 5}
+
+
 def _is_ours(group):
-    return any(MARK in h.get("command", "") for h in group.get("hooks", []) if isinstance(h, dict))
+    for h in group.get("hooks", []):
+        if isinstance(h, dict):
+            text = " ".join([h.get("command", "")] + [str(a) for a in h.get("args", [])])
+            if MARK in text.replace("\\", "/"):
+                return True
+    return False
 
 
-def add_hooks(settings):
+def add_hooks(settings, hook=None):
     hooks = settings.setdefault("hooks", {})
     for event in EVENTS:
         groups = hooks.setdefault(event, [])
         if any(_is_ours(g) for g in groups):
             continue
-        group = {"hooks": [{"type": "command", "command": COMMAND, "timeout": 5}]}
+        group = {"hooks": [dict(hook or POSIX_HOOK)]}
         if event == "PreToolUse":
             group = {"matcher": "AskUserQuestion", **group}
         groups.append(group)
@@ -78,18 +91,27 @@ def update_file(path, change):
 
 
 def main(argv):
-    if not argv or argv[0] not in ("add", "remove"):
-        sys.stderr.write("usage: settings_hooks.py add|remove [settings.json]\n")
+    """add [settings.json] | add-exec <python> <hook.py> [settings.json] | remove [settings.json]"""
+    cmd = argv[0] if argv else ""
+    if cmd == "add-exec" and len(argv) >= 3:
+        hook = windows_hook(argv[1], argv[2])
+        rest = argv[3:]
+        change = lambda s: add_hooks(s, hook=hook)  # noqa: E731
+    elif cmd in ("add", "remove"):
+        rest = argv[1:]
+        change = add_hooks if cmd == "add" else remove_hooks
+    else:
+        sys.stderr.write("usage: settings_hooks.py add|remove [settings.json] | "
+                         "add-exec <python> <hook.py> [settings.json]\n")
         return 2
-    path = os.path.expanduser(argv[1] if len(argv) > 1 else "~/.claude/settings.json")
-    change = add_hooks if argv[0] == "add" else remove_hooks
+    path = os.path.expanduser(rest[0] if rest else "~/.claude/settings.json")
     try:
         changed = update_file(path, change)
     except ValueError as e:
         sys.stderr.write("claude-light: %s\n" % e)
         return 1
     print("claude-light: hooks %s in %s" % (
-        ("added" if argv[0] == "add" else "removed") if changed else "already up to date", path))
+        ("removed" if cmd == "remove" else "added") if changed else "already up to date", path))
     return 0
 
 

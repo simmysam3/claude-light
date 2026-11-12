@@ -1,20 +1,26 @@
-#!/bin/zsh
-# claude-light: on | off | sound on|off | message on|off | size 1-10 | delay <seconds|Nm>
-#               | status | preview [green|yellow|red] | restart
-# Settings go through src/lightctl.py (the one writer of config.json); the menu bar uses it too.
+#!/bin/sh
+# claude-light (macOS and Linux):
+#   on | off | sound on|off | message on|off | size 1-10 | delay <seconds|Nm>
+#   | status | preview [green|yellow|red] | menu | waybar [--follow] | restart
+# Settings go through src/lightctl.py (the one writer of config.json); the menus use it too.
 R="$HOME/.claude-light"
-LABEL="local.claude-light"
+PY=/usr/bin/python3
+[ -x "$PY" ] || PY=python3
 case "${1:-status}" in
-  preview)
-    color="${2:-yellow}"
-    [[ "$color" == (green|yellow|red) ]] || { echo "claude-light: preview green|yellow|red" >&2; exit 2; }
-    printf '{"color": "%s"}\n' "$color" > "$R/preview.json"
-    echo "claude-light: previewing $color for 6 s" ;;
   restart)
-    launchctl kickstart -k "gui/$(id -u)/$LABEL" && echo "claude-light: restarted" ;;
+    if [ "$(uname)" = Darwin ]; then
+      launchctl kickstart -k "gui/$(id -u)/local.claude-light" && echo "claude-light: restarted"
+    else
+      systemctl --user restart claude-light.service && echo "claude-light: restarted"
+    fi ;;
   status)
-    /usr/bin/python3 "$R/src/lightctl.py" status
-    if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then echo "watcher: running"; else echo "watcher: NOT running (run install.sh)"; fi ;;
+    "$PY" "$R/src/lightctl.py" status
+    if [ "$(uname)" = Darwin ]; then
+      launchctl print "gui/$(id -u)/local.claude-light" >/dev/null 2>&1 && running=1 || running=
+    else
+      systemctl --user is-active --quiet claude-light.service && running=1 || running=
+    fi
+    if [ -n "$running" ]; then echo "watcher: running"; else echo "watcher: NOT running (run install.sh)"; fi ;;
   *)
-    exec /usr/bin/python3 "$R/src/lightctl.py" "$@" ;;
+    exec "$PY" "$R/src/lightctl.py" "$@" ;;
 esac

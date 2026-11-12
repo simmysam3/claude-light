@@ -40,6 +40,7 @@ class TestUpdateFile(unittest.TestCase):
         import tempfile
         self.dir = tempfile.mkdtemp()
 
+    @unittest.skipIf(sys.platform == "win32", "symlinks need Developer Mode on Windows")
     def test_writes_through_a_symlink_and_keeps_a_backup(self):
         import json
         real = os.path.join(self.dir, "real.json")
@@ -65,6 +66,20 @@ class TestUpdateFile(unittest.TestCase):
         missing = os.path.join(self.dir, "sub", "settings.json")
         sh.update_file(missing, sh.add_hooks)
         self.assertTrue(os.path.exists(missing))
+
+
+class TestWindowsExecForm(unittest.TestCase):
+    PY = r"C:\Users\x\AppData\Local\Programs\Python\Python312\pythonw.exe"
+    HOOK = r"C:\Users\x\.claude-light\src\hook.py"
+
+    def test_windows_hooks_run_python_directly_and_come_out_again(self):
+        win = sh.windows_hook(self.PY, self.HOOK)
+        added = sh.add_hooks({"hooks": {"Stop": [{"hooks": [THEIRS]}]}}, hook=win)
+        stop = [g for g in added["hooks"]["Stop"] if g != {"hooks": [THEIRS]}]
+        self.assertEqual(stop, [{"hooks": [{"type": "command", "command": self.PY, "args": [self.HOOK],
+                                            "timeout": 5}]}])
+        self.assertEqual(sh.add_hooks(copy.deepcopy(added), hook=win), added)          # idempotent
+        self.assertEqual(sh.remove_hooks(added), {"hooks": {"Stop": [{"hooks": [THEIRS]}]}})
 
 
 if __name__ == "__main__":

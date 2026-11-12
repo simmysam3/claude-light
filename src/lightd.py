@@ -11,7 +11,9 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fsutil  # noqa: E402
 import lightcore as lc  # noqa: E402
+import procinfo  # noqa: E402
 
 
 class Watcher:
@@ -43,6 +45,7 @@ class Watcher:
         display["config"] = cfg
         if not cfg["show_message"]:
             display["message"] = ""
+        display["status"] = lc.status_line(display, cfg["enabled"])
         _write_json(os.path.join(self.root, "display.json"), display)
         self.prev = display
         return display
@@ -99,26 +102,13 @@ def _read_json(path):
         return None
 
 
-def _write_json(path, data):
-    tmp = "%s.%d.tmp" % (path, os.getpid())
-    with open(tmp, "w") as f:
-        json.dump(data, f)
-    os.replace(tmp, path)
-
-
-def parse_ps(text):
-    """`ps -axo pid=,lstart=` output -> {pid: start time}."""
-    table = {}
-    for line in text.splitlines():
-        pid, _, start = line.strip().partition(" ")
-        if pid.isdigit():
-            table[int(pid)] = start.strip()
-    return table
+_write_json = fsutil.write_json
+parse_ps = procinfo.parse_ps
 
 
 def process_alive(session, table):
     """Is the session's claude process (same pid AND same start time) still running?"""
-    if "pid" not in session or not table:   # no table = ps failed: never cry crash
+    if "pid" not in session or table is None:   # None = the lookup failed: never cry crash
         return True
     return table.get(session["pid"]) == session.get("pid_start")
 
@@ -158,25 +148,41 @@ def transcript_interrupted(path):
     return False
 
 
-# ---- runtime (launchd runs this; everything above is unit-tested) ----------------
+def ball_command(platform, root, python):
+    """The command that starts the ball (and its menu) on this OS."""
+    if platform == "win32":
+        import ntpath
+        j = ntpath.join
+        return ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-File",
+                j(root, "windows", "ball.ps1"), j(root, "display.json"), j(root, "bong.wav"), python]
+    import posixpath
+    j = posixpath.join
+    files = [j(root, "display.json"), j(root, "bong.wav")]
+    if platform.startswith("linux"):
+        return [python, j(root, "linux", "ball.py")] + files
+    return [j(root, "bin", "ball")] + files
+
+
+# ---- runtime (launchd / systemd / the Windows Startup folder run this) -------------
 
 ROOT = os.path.expanduser("~/.claude-light")
 PROBE_URL = os.environ.get("CLAUDE_LIGHT_PROBE_URL", "https://api.anthropic.com/")
-C_LOCALE = dict(os.environ, LC_ALL="C")
+BALL_RESTART_SECONDS = 10
 
 
-def ps_table():
-    """{pid: start} for every process, or None if ps failed."""
-    try:
-        out = subprocess.run(["/bin/ps", "-axo", "pid=,lstart="], capture_output=True,
-                             text=True, timeout=5, env=C_LOCALE).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return parse_ps(out) or None
+def _session_pids(root):
+    pids = []
+    for path in glob.glob(os.path.join(root, "state", "*.json")):
+        s = _read_json(path)
+        if isinstance(s, dict) and isinstance(s.get("pid"), int):
+            pids.append(s["pid"])
+    return pids
 
 
 def main():
     os.makedirs(os.path.join(ROOT, "state"), exist_ok=True)
+    if sys.platform == "win32" and sys.stderr is None:   # pythonw has no console: log to a file
+        sys.stderr = open(os.path.join(ROOT, "lightd.log"), "a", buffering=1)
     bong_wav = os.path.join(ROOT, "bong.wav")
     if not os.path.exists(bong_wav):
         import bong
@@ -187,18 +193,23 @@ def main():
     stopping = []
     signal.signal(signal.SIGTERM, lambda *a: stopping.append(1))
     signal.signal(signal.SIGINT, lambda *a: stopping.append(1))
-    ball = None
+    command = ball_command(sys.platform, ROOT, sys.executable)
+    flags = 0x08000000 if sys.platform == "win32" else 0     # CREATE_NO_WINDOW
+    ball, ball_started = None, 0.0
     while not stopping:
         now = time.time()
         if now - procs["at"] >= 2.0:
-            procs["table"], procs["at"] = ps_table(), now
+            procs["table"], procs["at"] = procinfo.starts(_session_pids(ROOT)), now
         try:
             watcher.tick(now)
         except Exception as e:  # keep the light alive; log and carry on
             sys.stderr.write("tick failed: %r\n" % (e,))
-        if ball is None or ball.poll() is not None:
-            ball = subprocess.Popen([os.path.join(ROOT, "bin", "ball"),
-                                     os.path.join(ROOT, "display.json"), bong_wav])
+        if (ball is None or ball.poll() is not None) and now - ball_started >= BALL_RESTART_SECONDS:
+            try:
+                ball, ball_started = subprocess.Popen(command, creationflags=flags), now
+            except OSError as e:
+                sys.stderr.write("ball failed to start: %r\n" % (e,))
+                ball, ball_started = None, now
         time.sleep(1.0)
     if ball is not None:
         ball.terminate()

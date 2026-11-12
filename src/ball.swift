@@ -11,7 +11,7 @@ struct Settings {
 
 struct Display {
     var visible = false, color = "yellow", headline = "", detail = "", message = ""
-    var keys: [String] = [], alertId = 0, sound = true, size = 5, tray = ""
+    var keys: [String] = [], alertId = 0, sound = true, size = 5, tray = "", status = ""
     var settings = Settings()
 
     static func load(_ path: String) -> Display? {
@@ -28,6 +28,7 @@ struct Display {
         d.sound = o["sound"] as? Bool ?? true
         d.size = o["size"] as? Int ?? 5
         d.tray = o["tray"] as? String ?? ""
+        d.status = o["status"] as? String ?? ""
         if let c = o["config"] as? [String: Any] {
             d.settings.enabled = c["enabled"] as? Bool ?? true
             d.settings.sound = c["sound"] as? Bool ?? true
@@ -339,11 +340,7 @@ final class Ball: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func statusLine() -> String {
-        if !current.settings.enabled { return "claude-light is off" }
-        let name = ["green": "Question waiting", "yellow": "A session is waiting", "red": "Error"]
-        if current.visible { return "\(name[current.color] ?? "Alert"): \(current.detail)" }
-        if let n = name[current.tray] { return "\(n) (ball after the delay)" }
-        return "All quiet"
+        current.status.isEmpty ? "claude-light" : current.status   // written by lightd (lightcore.status_line)
     }
 
     func toggle(_ menu: NSMenu, _ title: String, _ onArgs: [String], _ offArgs: [String], _ isOn: Bool) {

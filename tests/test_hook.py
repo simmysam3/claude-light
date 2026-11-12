@@ -41,5 +41,14 @@ class TestHookWrites(unittest.TestCase):
         self.assertEqual(os.listdir(self.dir), [])
 
 
+class TestParentWithoutArgument(unittest.TestCase):
+    def test_no_pid_argument_uses_the_hooks_own_parent(self):
+        d = tempfile.mkdtemp()
+        payload = {"hook_event_name": "Stop", "session_id": "s1", "cwd": "/x/webapp"}
+        hook.run(["hook.py"], json.dumps(payload), d, 10.0, fake_proc, getppid=lambda: 4242)
+        with open(os.path.join(d, "s1.json")) as f:
+            self.assertEqual(json.load(f)["pid"], 4242)
+
+
 if __name__ == "__main__":
     unittest.main()
